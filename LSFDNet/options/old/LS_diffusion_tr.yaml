@@ -1,0 +1,167 @@
+# general settings
+name: train_diffusion_fusion
+model_type: TRFM
+phase: train
+num_gpu: 2
+manual_seed: 0
+
+
+# dataset and data loader settings
+datasets:
+  train:
+    name: train
+    type: OSLSP_FusionDataset
+    crop_size: 256
+    LW_path: '/data/gyy/ship_our/LWIR/'
+    SW_path: '/data/gyy/ship_our/SWIR/'
+    paired_path: '/data/gyy/ship_our/paired/'
+    label_path: '/data/gyy/ship_our/labels/'
+    is_crop: True
+    is_size: False
+    batch_size_per_gpu: 8
+    num_worker_per_gpu: 6
+    pin_memory: True
+    data_len: -1
+
+  val:
+    # Please modify accordingly to use your own validation
+    # Or comment the val block if do not need validation during training
+    name: val
+    type: OSLSP_FusionDataset
+    crop_size: 256
+    LW_path: '/data/gyy/ship_our/LWIR/'
+    SW_path: '/data/gyy/ship_our/SWIR/'
+    paired_path: '/data/gyy/ship_our/paired/'
+    label_path: '/data/gyy/ship_our/labels/'
+    is_crop: True
+    is_size: False
+    batch_size_per_gpu: 1
+    num_worker_per_gpu: 1
+    pin_memory: True
+    data_len: -1
+
+
+# network structures
+network_ft_extra:
+  type: FeatureExtractorDDPM
+  input_activations: false
+  steps: [5, 25, 75]
+  blocks: [4, 5, 8, 12]
+  
+  upsample_mode: bilinear
+  share_noise: true
+  
+  attention_resolutions: 32,16,8
+  class_cond: false
+  diffusion_steps: 1000
+  dropout: 0.1
+  image_size: 256
+  learn_sigma: true
+  noise_schedule: linear
+  num_channels: 256
+  num_head_channels: 64
+  num_res_blocks: 2
+  resblock_updown: true
+  use_fp16: true
+  use_scale_shift_norm: true
+  channel_mult: ""
+  num_heads: "4"
+  num_heads_upsample: -1
+  timestep_respacing: ""
+  use_kl: false
+  predict_xstart: false
+  rescale_timesteps: false
+  rescale_learned_sigmas: false
+  use_checkpoint: false
+  use_new_attention_order: false
+
+network_fusion_head_trans:
+  type: HybridEncoder
+  in_channels: [768, 1536, 3072]
+  feat_strides: [2, 4, 8]
+  hidden_dim: 256
+  nhead: 8
+  dim_feedforward: 1024
+  dropout: 0
+  enc_act: "gelu"
+  use_encoder_idx: [2]
+  num_encoder_layers: 1
+  pe_temperature: 10000  
+  expansion: 1.0
+  depth_mult: 1
+  act: "silu"
+  eval_spatial_size: [640, 640]
+      
+# path
+path:
+  pretrain_network_DDFM: "/home/gyy/IRFusion-main/PTH/LS_fusion_E249_gen.pth"
+  pretrain_network_DDPM: "/home/gyy/IRFusion-main/PTH/256x256_diffusion_uncond.pt"
+  pretrain_network_TRFM: ~
+  models: "../experiments"
+  training_states:
+  strict_load_g: true
+  resume_state: ~
+
+# training settings
+train:
+  a: 0.9
+  b: 0.5
+  c: 0.9
+  #n_epoch: 300
+  optimizer: 
+      type: Adam
+      lr: !!float 1e-4
+
+  scheduler:
+    type: MultiStepLR
+    milestones: [50000, 75000, 100000, 150000, 200000]
+    gamma: 0.5
+
+  total_iter: 300000
+  warmup_iter: -1  # no warm up
+
+  #Loss
+  Loss_LS:
+    type: Fusionloss_LS
+
+# validation settings
+val:
+  split_log: true
+  fix_seed: true
+  color_gamma: 1.0
+  use_up_v2: true
+  pyramid_list: [1, 1, 2, 2]
+  ddim_eta: !!float 1.0
+  ddim_timesteps: 4
+  use_kind_align: true
+  cal_all: true
+  show_all: true
+  val_freq: !!float 5000
+  save_img: true
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim_lol
+    lpips:
+      type: calculate_lpips_lol
+
+
+# logging settings
+logger:
+  print_freq: 50
+  save_checkpoint_freq: !!float 2000
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500
+
+find_unused_parameters: true
